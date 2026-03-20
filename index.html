@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Captura de Firma</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; 
+            position: fixed; /* Ancla global contra el scroll */
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #canvas {
+            width: 100%;
+            max-width: 600px;
+            height: 300px;
+            border: 2px solid #aec2e6;
+            background: white;
+            border-radius: 8px;
+            touch-action: none;
+        }
+
+        .botones { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        button { padding: 10px 20px; border: none; background: #2b6cb0; color: white; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        button.limpiar { background: #e53e3e; }
+        button.descargar { background: #38a169; }
+        button.descargar-pdf { background: #805ad5; } /* Color morado para diferenciar el PDF */
+
+        #mensaje { margin-top: 20px; padding: 12px; border-radius: 6px; display: none; text-align: center; }
+    </style>
+    <!-- Librería jsPDF (ES5 compatible) para generar PDFs en el cliente -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.5.3/jspdf.min.js"></script>
+</head>
+<body>
+    <h3>Firme aquí</h3>
+    <canvas id="canvas"></canvas>
+    <div class="botones">
+        <button class="limpiar" onclick="limpiar()">Limpiar</button>
+        <button onclick="guardar()">Guardar Servidor</button>
+        <button class="descargar" onclick="descargarPNG()">Descargar PNG</button>
+        <button class="descargar-pdf" onclick="abrirPDF()">Abrir en PDF ↗</button>
+    </div>
+    <div id="mensaje"></div>
+
+    <script>
+        // Bloquear todo el scroll nativo global excepto al dibujar
+        document.addEventListener('touchmove', function(e) { e.preventDefault(); }, false);
+
+        var canvas = document.getElementById("canvas");
+        var ctx = canvas.getContext("2d");
+
+        function ajustarCanvas() {
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            ctx.lineWidth = 3;
+            ctx.lineCap = "round";
+            ctx.strokeStyle = "#000";
+        }
+
+        window.addEventListener("resize", ajustarCanvas);
+        ajustarCanvas();
+
+        var dibujando = false;
+
+        function obtenerCoordenadas(e) {
+            var rect = canvas.getBoundingClientRect();
+            var clientX = e.clientX;
+            var clientY = e.clientY;
+            
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            }
+
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        // EVENTOS TOUCH PARA IPAD - Codificados en ES5 puro sin let/const para evitar crashes en iOS 9
+        canvas.addEventListener("touchstart", function (e) {
+            e.preventDefault(); // BLOQUEA SCROLL, PERMITE DIBUJAR
+            dibujando = true;
+            var coords = obtenerCoordenadas(e);
+            ctx.beginPath();
+            ctx.moveTo(coords.x, coords.y);
+        }, false);
+
+        canvas.addEventListener("touchmove", function (e) {
+            e.preventDefault(); // BLOQUEA SCROLL DURANTE TRAZO
+            if (!dibujando) return;
+            var coords = obtenerCoordenadas(e);
+            ctx.lineTo(coords.x, coords.y);
+            ctx.stroke();
+        }, false);
+
+        canvas.addEventListener("touchend", function (e) {
+            e.preventDefault();
+            dibujando = false;
+        }, false);
+
+        // EVENTOS MOUSE TRADICIONALES
+        canvas.addEventListener("mousedown", function (e) {
+            dibujando = true;
+            var coords = obtenerCoordenadas(e);
+            ctx.beginPath();
+            ctx.moveTo(coords.x, coords.y);
+        }, false);
+
+        canvas.addEventListener("mousemove", function (e) {
+            if (!dibujando) return;
+            var coords = obtenerCoordenadas(e);
+            ctx.lineTo(coords.x, coords.y);
+            ctx.stroke();
+        }, false);
+
+        canvas.addEventListener("mouseup", function () { dibujando = false; }, false);
+        canvas.addEventListener("mouseout", function () { dibujando = false; }, false);
+
+        function limpiar() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function mostrarMensaje(texto, tipo) {
+            var t = tipo || "exito";
+            var msg = document.getElementById("mensaje");
+            msg.innerHTML = texto;
+            msg.style.display = "block";
+            msg.style.background = t === "exito" ? "#d4edda" : "#f8d7da";
+            msg.style.color = t === "exito" ? "#155724" : "#721c24";
+            setTimeout(function() { msg.style.display = "none"; }, 3500);
+        }
+
+        function isCanvasEmpty() {
+            var blank = document.createElement('canvas');
+            blank.width = canvas.width;
+            blank.height = canvas.height;
+            return canvas.toDataURL() === blank.toDataURL();
+        }
+
+        function guardar() {
+            if (isCanvasEmpty()) {
+                mostrarMensaje("Firme primero", "error");
+                return;
+            }
+            var dataURL = canvas.toDataURL("image/png");
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/guardar", true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            mostrarMensaje(data.ok ? "Guardado" : "Error de servidor", data.ok ? "exito" : "error");
+                        } catch(e) { mostrarMensaje("Error", "error"); }
+                    } else { mostrarMensaje("Error de red", "error"); }
+                }
+            };
+            xhr.send(JSON.stringify({ imagen: dataURL }));
+        }
+
+        function descargarPNG() {
+            if (isCanvasEmpty()) {
+                mostrarMensaje("Firme primero", "error");
+                return;
+            }
+            var link = document.createElement("a");
+            link.download = "firma_" + new Date().getTime() + ".png";
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        }
+
+        function abrirPDF() {
+            if (isCanvasEmpty()) {
+                mostrarMensaje("Firme primero", "error");
+                return;
+            }
+            
+            if (typeof jsPDF === 'undefined') {
+                mostrarMensaje("Librería PDF no cargada", "error");
+                return;
+            }
+
+            try {
+                // Creamos un PDF horizontal (apaisado) en tamaño A4
+                var doc = new jsPDF("landscape", "mm", "a4");
+                var imgData = canvas.toDataURL("image/png", 1.0);
+                
+                doc.setFontSize(22);
+                doc.text("Documento Firmado", 20, 30);
+                
+                // Agregamos la imagen al documento (Ancho 200mm, Alto 100mm)
+                doc.addImage(imgData, 'PNG', 48, 50, 200, 100);
+                
+                // Generamos un blob temporal del PDF local
+                var blob = doc.output("blob");
+                var urlObj = URL.createObjectURL(blob);
+                
+                // Abrimos la URL virtual en una nueva pestaña (ventana emergente)
+                var ventanaNueva = window.open(urlObj, "_blank");
+                
+                if (!ventanaNueva) {
+                    // Si falla silenciosamente, Apple bloqueó la ventana
+                    mostrarMensaje("Desbloquea las ventanas emergentes (pop-ups) en Configuración de Safari.", "error");
+                }
+            } catch(e) {
+                mostrarMensaje("Hubo un error al generar tu PDF.", "error");
+            }
+        }
+    </script>
+</body>
+</html>
