@@ -43,6 +43,11 @@
         button.descargar-pdf { background: #805ad5; } /* Color morado para diferenciar el PDF */
 
         #mensaje { margin-top: 20px; padding: 12px; border-radius: 6px; display: none; text-align: center; }
+
+        .input-group { margin-top: 15px; width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 5px; }
+        .input-group label { font-weight: bold; font-size: 14px; color: #4a5568; text-align: left; }
+        .input-group input { padding: 10px; font-size: 16px; border: 1px solid #cbd5e0; border-radius: 5px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
+        .input-group input:focus { border-color: #2b6cb0; }
     </style>
     <!-- Librería jsPDF (ES5 compatible) para generar PDFs en el cliente -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.5.3/jspdf.min.js"></script>
@@ -50,6 +55,10 @@
 <body>
     <h3>Firme aquí</h3>
     <canvas id="canvas"></canvas>
+    <div class="input-group">
+        <label for="nombreDoc">Nombre del documento / firmante:</label>
+        <input type="text" id="nombreDoc" placeholder="Ej. Contrato, Recibo, Juan Perez...">
+    </div>
     <div class="botones">
         <button class="limpiar" onclick="limpiar()">Limpiar</button>
         <button onclick="guardar()">Guardar Servidor</button>
@@ -137,6 +146,7 @@
 
         function limpiar() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById("nombreDoc").value = "";
         }
 
         function mostrarMensaje(texto, tipo) {
@@ -161,6 +171,9 @@
                 mostrarMensaje("Firme primero", "error");
                 return;
             }
+            var nombreInput = document.getElementById("nombreDoc").value.trim();
+            var nombreDoc = nombreInput ? nombreInput : ("firma_" + new Date().getTime());
+            
             var dataURL = canvas.toDataURL("image/png");
             var xhr = new XMLHttpRequest();
             xhr.open("POST", "/guardar", true);
@@ -175,7 +188,7 @@
                     } else { mostrarMensaje("Error de red", "error"); }
                 }
             };
-            xhr.send(JSON.stringify({ imagen: dataURL }));
+            xhr.send(JSON.stringify({ imagen: dataURL, nombre: nombreDoc }));
         }
 
         function descargarPNG() {
@@ -183,8 +196,11 @@
                 mostrarMensaje("Firme primero", "error");
                 return;
             }
+            var nombreInput = document.getElementById("nombreDoc").value.trim();
+            var nombreDoc = nombreInput ? nombreInput : ("firma_" + new Date().getTime());
+            
             var link = document.createElement("a");
-            link.download = "firma_" + new Date().getTime() + ".png";
+            link.download = nombreDoc + ".png";
             link.href = canvas.toDataURL("image/png");
             link.click();
         }
@@ -201,12 +217,15 @@
             }
 
             try {
+                var nombreInput = document.getElementById("nombreDoc").value.trim();
+                var titulo = nombreInput ? nombreInput : "Documento Firmado";
+
                 // Creamos un PDF horizontal (apaisado) en tamaño A4
                 var doc = new jsPDF("landscape", "mm", "a4");
                 var imgData = canvas.toDataURL("image/png", 1.0);
                 
                 doc.setFontSize(22);
-                doc.text("Documento Firmado", 20, 30);
+                doc.text(titulo, 20, 30);
                 
                 // Agregamos la imagen al documento (Ancho 200mm, Alto 100mm)
                 doc.addImage(imgData, 'PNG', 48, 50, 200, 100);

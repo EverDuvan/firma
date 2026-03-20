@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import base64
 import time
 import os
+import re
 
 app = Flask(__name__)
 
@@ -18,6 +19,7 @@ def index():
 @app.route('/guardar', methods=['POST'])
 def guardar():
     data = request.json.get('imagen')
+    nombre_doc = request.json.get('nombre', f"firma_{int(time.time())}")
 
     if not data or not isinstance(data, str):
         return jsonify({"error": "No hay imagen válida"}), 400
@@ -31,7 +33,9 @@ def guardar():
         if len(img_b64) > 5 * 1024 * 1024:
             return jsonify({"error": "Imagen demasiado grande"}), 400
 
-        filename = f"firma_{int(time.time())}.png"
+        # Limpiar el nombre para que sea un archivo válido
+        safe_name = re.sub(r'[^a-zA-Z0-9_\-\s]', '_', nombre_doc).strip()
+        filename = f"{safe_name}.png"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
 
         with open(filepath, "wb") as f:
